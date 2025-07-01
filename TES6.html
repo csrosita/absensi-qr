@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Absensi Karyawan & QR Generator</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f2f2f2;
+      padding: 2rem;
+    }
+    h1 {
+      text-align: center;
+    }
+    .container {
+      max-width: 500px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin-bottom: 2rem;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 0.8rem;
+      margin-top: 1rem;
+      font-size: 1rem;
+    }
+    button {
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    .blue {
+      background-color: #2196f3;
+    }
+    .random {
+      background-color: #607d8b;
+    }
+    #status {
+      text-align: center;
+      margin-top: 1rem;
+      font-weight: bold;
+      color: #333;
+    }
+    #reader {
+      margin-top: 1rem;
+    }
+    #qrcode canvas {
+      margin: auto;
+      display: block;
+    }
+    #qrcode p {
+      text-align: center;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Absensi Karyawan</h1>
+  <div class="container">
+    <label for="nama">Nama Karyawan:</label>
+    <input type="text" id="nama" placeholder="Masukkan nama karyawan" />
+
+    <label for="shift">Shift Kerja:</label>
+    <select id="shift">
+      <option value="SHIFT PAGI (08:00 - 20:00)">SHIFT PAGI (08:00 - 20:00)</option>
+      <option value="SHIFT MALAM (20:00 - 08:00)">SHIFT MALAM (20:00 - 08:00)</option>
+    </select>
+
+    <button class="blue" onclick="submitAbsensi('Masuk Kerja')">👋 Masuk Kerja</button>
+    <button class="blue" onclick="submitAbsensi('Pulang Kerja')">🏠 Pulang Kerja</button>
+    <button class="random" onclick="submitAbsensi('Rokok')">🚬 Rokok</button>
+    <button class="random" onclick="submitAbsensi('Kembali ke Ruangan')">🏢 Kembali ke Ruangan</button>
+    <button class="random" onclick="submitAbsensi('Beli Makan')">🍽️ Beli Makan</button>
+
+    <button class="blue" onclick="startScanner()">📷 Scan QR</button>
+
+    <div id="reader" style="width:100%;"></div>
+    <div id="status"></div>
+  </div>
+
+  <h1>🔳 Generator QR Karyawan</h1>
+  <div class="container">
+    <input type="text" id="qrNama" placeholder="Masukkan nama karyawan">
+    <button class="blue" onclick="generateQRCode()">🔳 Buat QR Code</button>
+    <div id="qrcode"></div>
+  </div>
+
+  <script>
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbw6KXvj2U1qT3MoLKvx3rILSLVHf0ACmIQNt8Vy21dQrFZG3dZwER5H2Hc6S-ArzHXw7g/exec';
+    let daftarNama = [];
+    let qrScanner = null;
+
+    // Ambil daftar nama dari Google Sheets
+    window.onload = () => {
+      document.querySelectorAll('button.random').forEach(btn => {
+        btn.style.backgroundColor = getRandomColor();
+      });
+
+      fetch(scriptURL)
+        .then(res => res.json())
+        .then(data => {
+          daftarNama = data.map(n => n.trim().toLowerCase());
+        });
+    };
+
+    function getRandomColor() {
+      const colors = ['#ff5722', '#9c27b0', '#795548', '#607d8b', '#3f51b5', '#e91e63', '#009688'];
+      return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    function submitAbsensi(aksi) {
+      const namaInput = document.getElementById("nama");
+      const shiftInput = document.getElementById("shift");
+      const nama = namaInput.value.trim();
+      const shift = shiftInput.value;
+      const statusDiv = document.getElementById("status");
+
+      if (!nama) {
+        statusDiv.innerText = "⚠️ Nama tidak boleh kosong.";
+        return;
+      }
+
+      if (/\d/.test(nama)) {
+        statusDiv.innerText = "⚠️ Nama tidak boleh mengandung angka.";
+        return;
+      }
+
+      if (!daftarNama.includes(nama.toLowerCase())) {
+        statusDiv.innerText = "⚠️ Nama tidak terdaftar.";
+        return;
+      }
+
+      const waktu = new Date().toLocaleString();
+
+      fetch(scriptURL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          nama: nama,
+          aksi: aksi,
+          waktu: waktu,
+          shift: shift
+        })
+      })
+      .then(() => {
+        statusDiv.innerText = `✅ Absensi "${aksi}" berhasil dicatat untuk ${nama}`;
+        namaInput.value = "";
+      })
+      .catch(() => {
+        statusDiv.innerText = "❌ Gagal mengirim data.";
+      });
+    }
+
+    function startScanner() {
+      const statusDiv = document.getElementById("status");
+      const namaInput = document.getElementById("nama");
+      const readerDiv = document.getElementById("reader");
+
+      if (qrScanner) {
+        qrScanner.stop().then(() => {
+          qrScanner.clear();
+          qrScanner = null;
+        });
+        readerDiv.innerHTML = "";
+        return;
+      }
+
+      qrScanner = new Html5Qrcode("reader");
+
+      qrScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        qrMessage => {
+          namaInput.value = qrMessage.trim();
+          statusDiv.innerText = `✅ QR Terdeteksi: ${qrMessage}`;
+          qrScanner.stop().then(() => {
+            qrScanner.clear();
+            qrScanner = null;
+            readerDiv.innerHTML = "";
+          });
+        },
+        error => {
+          console.log("QR Error:", error);
+        }
+      ).catch(err => {
+        statusDiv.innerText = "❌ Tidak bisa mengakses kamera: " + err;
+      });
+    }
+
+    function generateQRCode() {
+      const nama = document.getElementById("qrNama").value.trim();
+      const qrcodeDiv = document.getElementById("qrcode");
+      qrcodeDiv.innerHTML = "";
+
+      if (!nama) {
+        alert("⚠️ Masukkan nama terlebih dahulu.");
+        return;
+      }
+
+      QRCode.toCanvas(nama, { width: 256 }, function (err, canvas) {
+        if (err) {
+          console.error(err);
+          return;
+        }
+        qrcodeDiv.appendChild(canvas);
+        const label = document.createElement("p");
+        label.innerText = nama;
+        qrcodeDiv.appendChild(label);
+      });
+    }
+  </script>
+</body>
+</html>
